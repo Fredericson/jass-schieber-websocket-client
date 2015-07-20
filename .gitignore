@@ -1,0 +1,5 @@
+/bin/
+/.gradle/2.4/taskArtifacts
+/.classpath
+/.settings
+/build
