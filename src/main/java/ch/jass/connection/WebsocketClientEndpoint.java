@@ -1,8 +1,9 @@
 package ch.jass.connection;
 
 import java.net.URI;
+import java.util.List;
+import java.util.Set;
 
-import javax.smartcardio.Card;
 import javax.websocket.ClientEndpoint;
 import javax.websocket.CloseReason;
 import javax.websocket.ContainerProvider;
@@ -12,20 +13,47 @@ import javax.websocket.OnOpen;
 import javax.websocket.Session;
 import javax.websocket.WebSocketContainer;
 
+import ch.jass.connection.inbound.RequestMessageBuilder;
+import ch.jass.connection.inbound.RequestMessageType;
+import ch.jass.connection.mapping.CardColorMapper;
+import ch.jass.connection.mapping.CardNumberMapper;
+import ch.jass.connection.mapping.ChooseSessionDataValue;
+import ch.jass.connection.mapping.ChooseTrumpfColorDataValue;
+import ch.jass.connection.mapping.ChooseTrumpfModeDataValue;
+import ch.jass.connection.outbound.SendMessage;
+import ch.jass.connection.outbound.SendMessageBuilder;
+import ch.jass.connection.outbound.SendMessageDataMap;
+import ch.jass.connection.outbound.SendMessageType;
+import ch.jass.model.Card;
+import ch.jass.model.Color;
+import ch.jass.model.SessionType;
 import ch.jass.model.Trumpf;
-import ch.jass.model.schieber.api.SchieberMessageReceiver;
+import ch.jass.model.schieber.api.SchieberPlayerCallback;
+import ch.jass.model.schieber.api.SchieberServerService;
+import ch.jass.model.schieber.table.PlayerNumber;
+import ch.jass.model.schieber.table.PlayerOnTable;
+import ch.jass.model.schieber.table.SchieberStich;
+import ch.jass.model.schieber.table.SchieberTableInfo;
+
+import com.sun.istack.internal.logging.Logger;
 
 /**
  * JassServer Client
  *
  */
 @ClientEndpoint
-public class WebsocketClientEndpoint {
+public class WebsocketClientEndpoint implements SchieberServerService {
+
+	private static final Logger LOGGER = Logger.getLogger(WebsocketClientEndpoint.class);
 
 	Session userSession = null;
-	private SchieberMessageReceiver messageReceiver;
+	private SchieberPlayerCallback schieberPlayer;
 
-	public void connectToServer() {
+	// Webplatform always choose Player1 as first Trumpfable Player
+	private PlayerNumber actualTrumpfablePlayer = PlayerNumber.PLAYER_1;
+
+	public void connectToServer(final SchieberPlayerCallback schieberPlayer) {
+		this.schieberPlayer = schieberPlayer;
 		try {
 			URI endpointURI = PropertyFileHelper.getJassServerEndpointUri();
 			WebSocketContainer container = ContainerProvider
@@ -71,18 +99,57 @@ public class WebsocketClientEndpoint {
 	 */
 	@OnMessage
 	public void onMessage(final String message) {
-		if (this.messageHandler != null) {
-			this.messageHandler.handleMessage(message);
+
+		try {
+			System.out.println(schieberPlayer.getName() + ": " + message);
+			RequestMessageType requestMsgType = RequestMessageBuilder.toRequestMessageType(message);
+			// System.out.println(JassBot.this.getRepresentationString() + " " + requestMsg.toString());
+			if (RequestMessageType.REQUEST_PLAYER_NAME.equals(requestMsgType)) {
+				sendPlayerName(schieberPlayer.getName());
+			} else if (RequestMessageType.REQUEST_SESSION_CHOICE.equals(requestMsgType)) {
+				List<String> sessions = RequestMessageBuilder.getRequestSessionChoice(message);
+				schieberPlayer.requestSessionChoice(sessions);
+			} else if (RequestMessageType.BROADCAST_SESSION_JOINED.equals(requestMsgType)) {
+				PlayerOnTable playerOnTable = RequestMessageBuilder.getBroadcastSessionJoined(message);
+				schieberPlayer.broadcastJoinedPlayer(playerOnTable);
+			} else if (RequestMessageType.BROADCAST_TEAMS.equals(requestMsgType)) {
+				SchieberTableInfo schieberTableInfo = RequestMessageBuilder.getBroadcastTeams(message);
+				schieberPlayer.broadcastTeams(schieberTableInfo);
+			} else if (RequestMessageType.DEAL_CARDS.equals(requestMsgType)) {
+				Set<Card> cards = RequestMessageBuilder.dealCards(message);
+				schieberPlayer.dealCards(cards);
+			} else if (RequestMessageType.REQUEST_TRUMPF.equals(requestMsgType)) {
+				boolean geschoben = RequestMessageBuilder.getRequestTrumpfData(message);
+				schieberPlayer.requestTrumpf(geschoben);
+			} else if (RequestMessageType.BROADCAST_TRUMPF.equals(requestMsgType)) {
+				Trumpf trumpf = RequestMessageBuilder.getBroadcastTrumpfData(message);
+				schieberPlayer.broadcastTrumpfForGame(trumpf);
+				schieberPlayer.broadcastTrumpfablePlayer(actualTrumpfablePlayer);
+				incrementTrumpfablePlayer();
+			} else if (RequestMessageType.REQUEST_CARD.equals(requestMsgType)) {
+				Color color = RequestMessageBuilder.getColorOfFirstPlayedCard(message);
+				schieberPlayer.requestCard(color);
+			} else if (RequestMessageType.REJECT_CARD.equals(requestMsgType)) {
+				Card card = RequestMessageBuilder.getRejectedCard(message);
+				schieberPlayer.requestCardRejected(card);
+				// This case should never happen.
+				LOGGER.warning("Card_Rejected: " + card);
+			} else if (RequestMessageType.PLAYED_CARDS.equals(requestMsgType)) {
+				Card card = RequestMessageBuilder.getPlayedCard(message);
+				schieberPlayer.broadcastPlayedCard(card);
+			} else if (RequestMessageType.BROADCAST_STICH.equals(requestMsgType)) {
+				SchieberStich stich = RequestMessageBuilder.getStich(message);
+				schieberPlayer.broadcastStich(stich);
+			} else if (RequestMessageType.BROADCAST_GAME_FINISHED.equals(requestMsgType)) {
+			} else if (RequestMessageType.BROADCAST_WINNER_TEAM.equals(requestMsgType)) {
+			}
+		} catch (Exception ex) {
+			LOGGER.info(schieberPlayer.getName() + ": Error while receiving message: " + message, ex);
 		}
 	}
 
-	/**
-	 * register message handler
-	 *
-	 * @param msgHandler
-	 */
-	public void addMessageHandler(final MessageHandler msgHandler) {
-		this.messageHandler = msgHandler;
+	private void incrementTrumpfablePlayer() {
+		this.actualTrumpfablePlayer = PlayerNumber.next(actualTrumpfablePlayer);
 	}
 
 	/**
@@ -91,7 +158,7 @@ public class WebsocketClientEndpoint {
 	 * @param message
 	 */
 	private void sendMessage(final SendMessage sendMessage) {
-		sendMessageString(MessageBuilder.toJSONString(sendMessage));
+		sendMessageString(SendMessageBuilder.toJSONString(sendMessage));
 	}
 
 	/**
@@ -100,10 +167,10 @@ public class WebsocketClientEndpoint {
 	 * @param message
 	 */
 	private void sendMessage(final SendMessageDataMap sendMessageDataMap) {
-		sendMessageString(MessageBuilder.toJSONString(sendMessageDataMap));
+		sendMessageString(SendMessageBuilder.toJSONString(sendMessageDataMap));
 	}
 
-	public void sendMessageString(final String msg) {
+	private void sendMessageString(final String msg) {
 		System.out.println("send: " + msg);
 		this.userSession.getAsyncRemote().sendText(msg);
 	}
@@ -114,14 +181,19 @@ public class WebsocketClientEndpoint {
 	 * @param name
 	 * @param message
 	 */
-	public void sendPlayerName(final String playerName) {
+	private void sendPlayerName(final String playerName) {
 		SendMessage sendMsg = new SendMessage(SendMessageType.CHOOSE_PLAYER_NAME, playerName);
 		sendMessage(sendMsg);
 	}
 
-	public void sendChooseSession(final ChooseSessionDataValue chooseSessionDataValue) {
+	@Override
+	public void sendChooseSession(final SessionType sessionType, final String existingSession) {
 		SendMessageDataMap sendMsg = new SendMessageDataMap(SendMessageType.CHOOSE_SESSION);
-		sendMsg.addData(ChooseSessionDataValue.DATA_TYPE, chooseSessionDataValue.name());
+		ChooseSessionDataValue chooseSession = ChooseSessionDataValue.getMappedChooseSession(sessionType);
+		sendMsg.addData(ChooseSessionDataValue.DATA_SESSION_CHOICE, chooseSession.name());
+		if (existingSession != null) {
+			sendMsg.addData(ChooseSessionDataValue.DATA_SESSION_NAME, existingSession);
+		}
 		sendMessage(sendMsg);
 	}
 
@@ -130,6 +202,7 @@ public class WebsocketClientEndpoint {
 	 * 
 	 * @param trumpf
 	 */
+	@Override
 	public void sendChooseTrumpf(final Trumpf trumpf) {
 		SendMessageDataMap sendMsg = new SendMessageDataMap(SendMessageType.CHOOSE_TRUMPF);
 		ChooseTrumpfModeDataValue mappedMode = ChooseTrumpfModeDataValue.getMappedMode(trumpf);
@@ -141,6 +214,7 @@ public class WebsocketClientEndpoint {
 		sendMessage(sendMsg);
 	}
 
+	@Override
 	public void sendChooseCard(final Card card) {
 		SendMessageDataMap sendMsg = new SendMessageDataMap(SendMessageType.CHOOSE_CARD);
 		sendMsg.addData(CardNumberMapper.PROPERTY_NAME, CardNumberMapper.getNumber(card.getRank()));
