@@ -130,10 +130,10 @@ public class WebsocketClientEndpoint implements SchieberServerService {
 				Color color = RequestMessageBuilder.getColorOfFirstPlayedCard(message);
 				schieberPlayer.requestCard(color);
 			} else if (RequestMessageType.REJECT_CARD.equals(requestMsgType)) {
-				Card card = RequestMessageBuilder.getRejectedCard(message);
-				schieberPlayer.requestCardRejected(card);
 				// This case should never happen.
+				Card card = RequestMessageBuilder.getRejectedCard(message);
 				LOGGER.warning("Card_Rejected: " + card);
+				schieberPlayer.requestCardRejected(card);
 			} else if (RequestMessageType.PLAYED_CARDS.equals(requestMsgType)) {
 				Card card = RequestMessageBuilder.getPlayedCard(message);
 				schieberPlayer.broadcastPlayedCard(card);
