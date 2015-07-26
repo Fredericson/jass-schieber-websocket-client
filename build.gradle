@@ -2,6 +2,9 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'maven'
 
+group = "ch.jass.connection"
+version = "1.0"
+
 repositories {
     mavenCentral()
     mavenLocal()
