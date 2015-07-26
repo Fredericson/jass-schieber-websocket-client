@@ -46,17 +46,21 @@ public class WebsocketClientEndpoint implements SchieberServerService {
 
 	private static final Logger LOGGER = Logger.getLogger(WebsocketClientEndpoint.class);
 
-	Session userSession = null;
+	private final URI endpointURI;
+	private Session userSession = null;
 	private SchieberPlayerCallback schieberPlayer;
 
 	// Webplatform always choose Player1 as first Trumpfable Player
 	private PlayerNumber actualTrumpfablePlayer = PlayerNumber.PLAYER_1;
 
+	public WebsocketClientEndpoint(final URI endpointURI) {
+		this.endpointURI = endpointURI;
+	}
+
 	@Override
 	public void connectToServer(final SchieberPlayerCallback schieberPlayer) {
 		this.schieberPlayer = schieberPlayer;
 		try {
-			URI endpointURI = PropertyFileHelper.getJassServerEndpointUri();
 			WebSocketContainer container = ContainerProvider
 					.getWebSocketContainer();
 			container.connectToServer(this, endpointURI);
