@@ -52,6 +52,7 @@ public class WebsocketClientEndpoint implements SchieberServerService {
 	// Webplatform always choose Player1 as first Trumpfable Player
 	private PlayerNumber actualTrumpfablePlayer = PlayerNumber.PLAYER_1;
 
+	@Override
 	public void connectToServer(final SchieberPlayerCallback schieberPlayer) {
 		this.schieberPlayer = schieberPlayer;
 		try {
@@ -141,7 +142,9 @@ public class WebsocketClientEndpoint implements SchieberServerService {
 				SchieberStich stich = RequestMessageBuilder.getStich(message);
 				schieberPlayer.broadcastStich(stich);
 			} else if (RequestMessageType.BROADCAST_GAME_FINISHED.equals(requestMsgType)) {
+				schieberPlayer.broadcastGameFinished(null);
 			} else if (RequestMessageType.BROADCAST_WINNER_TEAM.equals(requestMsgType)) {
+				schieberPlayer.broadcastWinnerTeam(null);
 			}
 		} catch (Exception ex) {
 			LOGGER.info(schieberPlayer.getName() + ": Error while receiving message: " + message, ex);
