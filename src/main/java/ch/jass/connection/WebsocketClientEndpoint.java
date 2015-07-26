@@ -205,9 +205,10 @@ public class WebsocketClientEndpoint implements SchieberServerService {
 	}
 
 	/**
-	 * Null means geschoben.
+	 * Sends the chosen Trumpf to the SchieberServer.
 	 * 
 	 * @param trumpf
+	 *            null means geschoben.
 	 */
 	@Override
 	public void sendChooseTrumpf(final Trumpf trumpf) {
